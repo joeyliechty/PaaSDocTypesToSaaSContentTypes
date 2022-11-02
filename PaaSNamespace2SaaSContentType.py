@@ -9,17 +9,30 @@ parser = argparse.ArgumentParser(description='parse and slice a csv properly')
 parser.add_argument('--si', action="store", required=True, help="subdomain of saas instance")
 parser.add_argument('--inputfile', action="store", required=True, help="yaml namespace file")
 parser.add_argument('--project', action="store", required=True, default="core", help="core/development")
+parser.add_argument('--dryrun', action="store", required=False, default=True, help="use false to commit the result to the SaaS instance")
 args = parser.parse_args()
 # generate token from SaaS instance
 TOKEN = "add-token-here"
 NAMESPACE = "myproject"
-# this lookup table maps the hipposysedit:type property to the applicable basic displayType for the contentTypeMGMT API
+
+# this lookup table maps the hipposysedit:type property to the applicable displayType for the contentTypeMGMT API
 CONTENT_TYPE_TO_DISPLAY_TYPE = {
   "Boolean": "Checkbox",
+  "selection:BooleanRadioGroup": "RadioGroup",
+  "CalendarDate": None,
+  "Double": None,
+  "Docbase": "AnyLink",
+  "DynamicDropdown": "Dropdown",
+  "Long": None,
+  "OpenUiString": None,
+  "selection:RadioGroup": None,
+  "StaticDropdown": None,
   "String": "Simple",
+  "Text": "Text",
   "Date": None,
   "Html": None,
 }
+
 print("Processing {} namespace into SaaS instance {}, project: {}\n".format(args.inputfile, args.si, args.project))
 
 contentTypeAPI = "https://{}.bloomreach.io/management/contenttypes/v1/{}".format(args.si, args.project)
@@ -81,12 +94,6 @@ def parseFieldsFromYamlObject(nodetypeRoot):
       fields.append(field)
   return fields
 
-# identify custom compounds (type: FieldGroup)
-FieldGroups = []
-# create custom compounds
-# identify doctypes (type: Document)
-Documents = []
-# create doctypes
 with open(args.inputfile, "r") as stream:
   try:
     yaml = yaml.safe_load(stream)
@@ -104,15 +111,17 @@ with open(args.inputfile, "r") as stream:
             # iterate field object
             fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'])
             print("Creating FieldGroup: {}".format(contentTypeName))
-            createContentType(contentTypeName, "FieldGroup", fields)
+            if args.dryrun:
+              print(fields)
+            else:
+              createContentType(contentTypeName, "FieldGroup", fields)
           elif "{}:basedocument".format(NAMESPACE) in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
             fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'])
             print("Creating Document: {}".format(contentTypeName))
-            createContentType(contentTypeName, "Document", fields)
+            if args.dryrun:
+              print(fields)
+            else:
+              createContentType(contentTypeName, "Document", fields)
           print("=================\n")
   except yaml.YAMLError as exc:
     print(exc)
-
-
-
-print("Creating Documents:")
