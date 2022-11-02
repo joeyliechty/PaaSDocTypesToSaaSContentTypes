@@ -31,6 +31,11 @@ CONTENT_TYPE_TO_DISPLAY_TYPE = {
   "Text": "Text",
   "Date": None,
   "Html": None,
+  "hippostd:html": None,
+  "hippogallerypicker:imagelink": "ImageLink",
+  "hippo:resource": "AnyLink",
+  "hippo:mirror": "AnyLink",
+  "selection:listitem": None,
 }
 
 print("Processing {} namespace into SaaS instance {}, project: {}\n".format(args.inputfile, args.si, args.project))
@@ -42,6 +47,12 @@ headers = {
   "x-auth-token": TOKEN
 }
 
+def containsFieldGroup(fields):
+  for f in fields:
+    if f['type'] == "FieldGroup":
+      return True
+  return False
+
 def contentTypeExists(contentTypeName):
   getContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
   response = requests.get(contentTypeAPI, headers=headers)
@@ -50,15 +61,19 @@ def contentTypeExists(contentTypeName):
       return True
   return False
 
-def createContentType(contentTypeName, contentType, fields=[]):
+def createContentType(contentTypeName, contentType, fields):
   createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
   if contentTypeExists(contentTypeName):
     print("{} already exists, skipping...".format(contentTypeName))
+    return False
+  elif containsFieldGroup(fields) and not contentTypeExists(fieldGroup):
+    print("{} does not yet exist, skipping...".format(contentTypeName))
     return False
   else:
     # edit this data structure for the fields/etc
     payload = {
       "presentation": {
+        # hardcoding one-column for now for simplicity.
         "layout": 'one-column',
         "displayName": contentTypeName
       },
@@ -102,26 +117,24 @@ with open(args.inputfile, "r") as stream:
       # contentTypeName
       if key.startswith('/'):
         contentTypeName = key[1:]
-      # layout - one-column, etc
-      # passthru for now
-
-      # iterate fields
+        # iterate fields
         if '/hipposysedit:nodetype' in value.keys() and '/hipposysedit:nodetype' in value['/hipposysedit:nodetype'].keys():
           if "hippo:compound" in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
             # iterate field object
             fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'])
-            print("Creating FieldGroup: {}".format(contentTypeName))
+            print("FieldGroup: {}".format(contentTypeName))
             if args.dryrun:
+              print("DRY RUN MODE ENABLED: DISABLE TO COMMIT TO SAAS INSTANCE\nTHESE ARE THE POTENTIAL FIELDS")
               print(fields)
             else:
               createContentType(contentTypeName, "FieldGroup", fields)
           elif "{}:basedocument".format(NAMESPACE) in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
             fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'])
-            print("Creating Document: {}".format(contentTypeName))
+            print("Document: {}".format(contentTypeName))
             if args.dryrun:
+              print("DRY RUN MODE ENABLED: DISABLE TO COMMIT TO SAAS INSTANCE\nTHESE ARE THE POTENTIAL FIELDS")
               print(fields)
             else:
               createContentType(contentTypeName, "Document", fields)
-          print("=================\n")
   except yaml.YAMLError as exc:
     print(exc)
