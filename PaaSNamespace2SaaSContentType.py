@@ -12,7 +12,8 @@ parser.add_argument('--project', action="store", required=True, default="core", 
 parser.add_argument('--dryrun', action="store", required=False, default=True, help="use false to commit the result to the SaaS instance")
 args = parser.parse_args()
 # generate token from SaaS instance
-TOKEN = "add-token-here"
+TOKEN = "b861986e-97d3-446f-b7be-5924836378e7"
+# namespace from input file
 NAMESPACE = "myproject"
 
 # this lookup table maps the hipposysedit:type property to the applicable displayType for the contentTypeMGMT API
@@ -86,26 +87,34 @@ def createContentType(contentTypeName, contentType, fields):
     print(response.status_code)
     print(response.text)
 
-def parseFieldsFromYamlObject(nodetypeRoot):
+def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
   fields = []
   for k,v in nodetypeRoot.items():
     print("key: {}\nvalue: {}\n\n".format(k,v))
     if k.startswith("/"):
       required = False
-      if v['hipposysedit:mandatory'] == "true":
+      if v['hipposysedit:mandatory'] == 'true':
         required = True
       field = {
         "name": k[1:],
         "required": required,
         "type": v['hipposysedit:type'],
         "presentation": {
-          "caption": k[1:],
-          "hint": "placeholder",
           "layoutColumn": 1,
         }
       }
-      if CONTENT_TYPE_TO_DISPLAY_TYPE[v['hipposysedit:type']] != None:
+      # handle presentation
+      if editorTemplatesRoot[k].get('hint'):
+        field['presentation']['hint'] = editorTemplatesRoot[k].get('hint')
+      if editorTemplatesRoot[k].get('caption'):
+        field['presentation']['caption'] = editorTemplatesRoot[k].get('caption')
+      # we found a standard field mapping to display type
+      if CONTENT_TYPE_TO_DISPLAY_TYPE.get(v['hipposysedit:type']):
         field['presentation']['displayType'] = CONTENT_TYPE_TO_DISPLAY_TYPE[v['hipposysedit:type']]
+      # we found a inherited compound type / fieldgroup
+      elif v['hipposysedit:type'].startswith(NAMESPACE):
+        field['type'] = "FieldGroup"
+        field['fieldGroupType'] = field['name']
       fields.append(field)
   return fields
 
@@ -121,7 +130,7 @@ with open(args.inputfile, "r") as stream:
         if '/hipposysedit:nodetype' in value.keys() and '/hipposysedit:nodetype' in value['/hipposysedit:nodetype'].keys():
           if "hippo:compound" in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
             # iterate field object
-            fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'])
+            fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'], value['/editor:templates']['/_default_'])
             print("FieldGroup: {}".format(contentTypeName))
             if args.dryrun:
               print("DRY RUN MODE ENABLED: DISABLE TO COMMIT TO SAAS INSTANCE\nTHESE ARE THE POTENTIAL FIELDS")
@@ -129,7 +138,7 @@ with open(args.inputfile, "r") as stream:
             else:
               createContentType(contentTypeName, "FieldGroup", fields)
           elif "{}:basedocument".format(NAMESPACE) in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
-            fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'])
+            fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'], value['/editor:templates']['/_default_'])
             print("Document: {}".format(contentTypeName))
             if args.dryrun:
               print("DRY RUN MODE ENABLED: DISABLE TO COMMIT TO SAAS INSTANCE\nTHESE ARE THE POTENTIAL FIELDS")
