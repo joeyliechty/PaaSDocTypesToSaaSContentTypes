@@ -10,20 +10,16 @@ parser.add_argument('--si', action="store", required=True, help="subdomain of sa
 parser.add_argument('--inputfile', action="store", required=True, help="yaml namespace file")
 parser.add_argument('--project', action="store", required=True, default="core", help="core/development")
 parser.add_argument('--namespace', action="store", required=True, help="input project namespace")
+parser.add_argument('--token', action="store", required=True, help="token")
 parser.add_argument('--dryrun', action='store_true')
 parser.add_argument('--no-dryrun', dest='dryrun', action='store_false')
 parser.set_defaults(feature=True)
 args = parser.parse_args()
 # generate token from SaaS instance
-TOKEN = "ebb0c1db-bda2-46d3-b161-30e42d3ce48e"
+TOKEN = args.token
 # namespace from input file
 NAMESPACE = args.namespace
-NODRYRUNOK = False
-if hasDevelopmentProjectWithContentTypeChanges() and args.nodryrun:
-  NODRYRUNOK = True
-else:
-  print("There is not a development project with content type changes, please create one in the UI first.\nExiting Script.")
-  sys.exit()
+
 # these lookup tables map the hipposysedit:type property to the applicable type and displayType for the contentTypeMGMT API
 DOC_TYPE_TO_CONTENT_TYPE = {
   "selection:BooleanRadioGroup": "Boolean",
@@ -74,8 +70,8 @@ headers = {
   "x-auth-token": TOKEN
 }
 
-def hasDevelopmentProjectWithContentTypeChanges():
-  getContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
+def hasDevelopmentProjectWithContentTypeChanges(contentTypeName):
+  getContentTypeEndpoint = contentTypeAPI + "/{}".format(contentTypeName)
   response = requests.get(contentTypeAPI, headers=headers)
   if response.status_code == 404 and "no development project" in response.text:
     return False
@@ -123,12 +119,12 @@ def createContentType(contentTypeName, contentType, fields):
       },
       "type": contentType,
       "enabled": True,
-      "name": contentTypeName.lower().replace(" ", "-"),
+      "name": contentTypeName,
       "fields": fields
     }
+    print(payload)
     response = requests.put(createUpdateContentTypeEndpoint, json=payload, headers=headers)
     print(response.status_code)
-    print(response.text)
 
 def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
   fields = []
@@ -168,34 +164,48 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
       fields.append(field)
   return fields
 
-with open(args.inputfile, "r") as stream:
-  try:
-    yaml = yaml.safe_load(stream)
-    for key, value in yaml['/{}'.format(NAMESPACE)].items():
 
-      # contentTypeName
-      if key.startswith('/'):
-        contentTypeName = key[1:]
-        # iterate fields
-        if '/hipposysedit:nodetype' in value.keys() and '/hipposysedit:nodetype' in value['/hipposysedit:nodetype'].keys():
-          if "hippo:compound" in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
-            # iterate field object
-            fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'], value['/editor:templates']['/_default_'])
-            print("FieldGroup: {}".format(contentTypeName))
-            if args.dryrun:
-              print("DRY RUN MODE ENABLED: DISABLE TO COMMIT TO SAAS INSTANCE\nTHESE ARE THE POTENTIAL FIELDS")
-              print(fields)
-            else:
-              if NODRYRUNOK:
-                createContentType(contentTypeName, "FieldGroup", fields)
-          elif "{}:basedocument".format(NAMESPACE) in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
-            fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'], value['/editor:templates']['/_default_'])
-            print("Document: {}".format(contentTypeName))
-            if args.dryrun:
-              print("DRY RUN MODE ENABLED: DISABLE TO COMMIT TO SAAS INSTANCE\nTHESE ARE THE POTENTIAL FIELDS")
-              print(fields)
-            else:
-              if NODRYRUNOK:
-                createContentType(contentTypeName, "Document", fields)
-  except yaml.YAMLError as exc:
-    print(exc)
+if __name__ == "__main__":
+  FieldGroups = []
+  Documents = []
+  if args.dryrun:
+    print("DRY RUN MODE ENABLED: DISABLE TO COMMIT TO SAAS INSTANCE\nTHESE ARE THE POTENTIAL FIELDS")
+  with open(args.inputfile, "r") as stream:
+    try:
+      yaml = yaml.safe_load(stream)
+      for key, value in yaml['/{}'.format(NAMESPACE)].items():
+
+        # contentTypeName
+        if key.startswith('/'):
+          contentTypeName = key[1:]
+          # iterate fields
+          if '/hipposysedit:nodetype' in value.keys() and '/hipposysedit:nodetype' in value['/hipposysedit:nodetype'].keys():
+            if "hippo:compound" in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
+              # iterate field object
+              fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'], value['/editor:templates']['/_default_'])
+              FieldGroups.append([contentTypeName, fields])
+            elif "{}:basedocument".format(NAMESPACE) in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
+              fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'], value['/editor:templates']['/_default_'])
+              Documents.append([contentTypeName, fields])
+    except yaml.YAMLError as exc:
+      print(exc)
+  if hasDevelopmentProjectWithContentTypeChanges('foobar'):
+    NODRYRUNOK = True
+  else:
+    print("There is not a development project with content type changes, please create one in the UI first.\nExiting Script.")
+    sys.exit()
+
+  # if we cancel the dry run, create in SaaS
+  if NODRYRUNOK and not args.dryrun:
+    print("Creating Field Groups:")
+    for fg in FieldGroups:
+      createContentType(fg[0], "FieldGroup", fg[1])
+    print("Creating Document Types:")
+    for d in Documents:
+      createContentType(d[0], "Document", d[1])
+  elif args.dryrun:
+    for fg in FieldGroups:
+      print("{}\n{}".format(fg[0],fg[1]))
+    for d in Documents:
+      print("{}\n{}".format(d[0],d[1]))
+
