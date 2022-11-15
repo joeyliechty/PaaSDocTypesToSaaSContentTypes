@@ -146,13 +146,14 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
         field['type'] = DOC_TYPE_TO_CONTENT_TYPE[field['type']]
         if CONTENT_TYPE_TO_DISPLAY_TYPE.get(field['type']):
           field['presentation']['displayType'] = CONTENT_TYPE_TO_DISPLAY_TYPE[field['type']]
-      # TODO - properly handle hint and captions
-      # # handle presentation
-      # if editorTemplatesRoot[k].get('hint') != '':
-      #   field['presentation']['hint'] = editorTemplatesRoot[k].get('hint')
-      # if editorTemplatesRoot[k].get('caption'):
-      #   field['presentation']['caption'] = editorTemplatesRoot[k].get('caption')
-      # we found a standard field mapping to display type
+      # handle hints and captions
+      for etrItem in editorTemplatesRoot.items():
+        if type(etrItem[1]) is dict and etrItem[0] == k:
+          if etrItem[1].get('hint') != '':
+            field['presentation']['hint'] = etrItem[1].get('hint')
+          if etrItem[1].get('caption') != '':
+            field['presentation']['caption'] = etrItem[1].get('caption')
+        # we found a standard field mapping to display type
       if CONTENT_TYPE_TO_DISPLAY_TYPE.get(v['hipposysedit:type']):
         field['presentation']['displayType'] = CONTENT_TYPE_TO_DISPLAY_TYPE[v['hipposysedit:type']]
         if field['presentation']['displayType'] == 'RadioGroup':
@@ -163,7 +164,6 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
         field['fieldGroupType'] = field['name']
       fields.append(field)
   return fields
-
 
 if __name__ == "__main__":
   FieldGroups = []
