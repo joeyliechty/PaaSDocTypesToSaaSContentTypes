@@ -19,6 +19,7 @@ args = parser.parse_args()
 TOKEN = args.token
 # namespace from input file
 NAMESPACE = args.namespace
+NUMCREATED = 0
 
 # these lookup tables map the hipposysedit:type property to the applicable type and displayType for the contentTypeMGMT API
 DOC_TYPE_TO_CONTENT_TYPE = {
@@ -35,6 +36,7 @@ DOC_TYPE_TO_CONTENT_TYPE = {
   "hippogallerypicker:imagelink": "Link",
   "hippo:mirror": "Link",
   "hippo:resource": "Link",
+  "hippo:compound": "FieldGroup",
   "hippostd:html": "Html",
   "selection:listitem": "SelectableString",
 }
@@ -101,14 +103,16 @@ def contentTypeExists(contentTypeName):
 
 def createContentType(contentTypeName, contentType, fields):
   createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
+  # first, if it exists already, skip it.
+  if contentTypeExists(contentTypeName):
+    print("{} {} already exists, skipping...".format(contentType, contentTypeName))
+    return False
+  # then, if it contains fieldgroups which do not yet exist, skip it.
   if containsFieldGroup(fields):
     for fg in getFieldGroupNames(fields):
       if not contentTypeExists(fg):
-        print("FieldGroup {} does not yet exist, skipping...".format(fg))
+        print("FieldGroup {} does not yet exist, skipping {}...".format(fg, contentTypeName))
         return False
-  if contentTypeExists(contentTypeName):
-    print("ContentType {} already exists, skipping...".format(contentTypeName))
-    return False
   else:
     # edit this data structure for the fields/etc
     payload = {
@@ -122,9 +126,13 @@ def createContentType(contentTypeName, contentType, fields):
       "name": contentTypeName,
       "fields": fields
     }
-    print(payload)
+    print("JSON PAYLOAD:")
+    pprint(payload)
     response = requests.put(createUpdateContentTypeEndpoint, json=payload, headers=headers)
-    print(response.status_code)
+    print("STATUS CODE: {}".format(response.status_code))
+    print("RESPONSE TEXT: {}".format(response.text))
+    if response.status_code == 201:
+      NUMCREATED += 1
 
 def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
   fields = []
@@ -134,7 +142,7 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
       if v.get('hipposysedit:mandatory') == 'true':
         required = True
       field = {
-        "name": k[1:],
+        "name": k[1:].replace(" ", "_"),
         "required": required,
         "type": v.get('hipposysedit:type'),
         "presentation": {
@@ -203,6 +211,7 @@ if __name__ == "__main__":
     print("Creating Document Types:")
     for d in Documents:
       createContentType(d[0], "Document", d[1])
+    print("{} contentTypes Migrated to {}".format(NUMCREATED, args.si))
   elif args.dryrun:
     for fg in FieldGroups:
       print("{}\n{}".format(fg[0],fg[1]))
