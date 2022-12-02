@@ -19,7 +19,6 @@ args = parser.parse_args()
 TOKEN = args.token
 # namespace from input file
 NAMESPACE = args.namespace
-NUMCREATED = 0
 
 # these lookup tables map the hipposysedit:type property to the applicable type and displayType for the contentTypeMGMT API
 DOC_TYPE_TO_CONTENT_TYPE = {
@@ -137,9 +136,12 @@ def createContentType(contentTypeName, contentType, fields):
 def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
   fields = []
   for k,v in nodetypeRoot.items():
+    FIELD_DISPLAY_ORDER = []
     if k.startswith("/"):
       required = False
       if v.get('hipposysedit:mandatory') == 'true':
+        required = True
+      elif v.get('hipposysedit:validators') and 'required' in v.get('hipposysedit:validators'):
         required = True
       field = {
         "name": k[1:].replace(" ", "_"),
@@ -154,13 +156,16 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
         field['type'] = DOC_TYPE_TO_CONTENT_TYPE[field['type']]
         if CONTENT_TYPE_TO_DISPLAY_TYPE.get(field['type']):
           field['presentation']['displayType'] = CONTENT_TYPE_TO_DISPLAY_TYPE[field['type']]
-      # handle hints and captions
+      # handle hints, captions, ordering
       for etrItem in editorTemplatesRoot.items():
-        if type(etrItem[1]) is dict and etrItem[0] == k:
-          if etrItem[1].get('hint') != '':
-            field['presentation']['hint'] = etrItem[1].get('hint')
-          if etrItem[1].get('caption') != '':
-            field['presentation']['caption'] = etrItem[1].get('caption')
+        if type(etrItem[1]) is dict and etrItem[0] not in ['/root', '/left', '/right']:
+          if etrItem[0] == k:
+            if etrItem[1].get('hint') != '':
+              field['presentation']['hint'] = etrItem[1].get('hint')
+            if etrItem[1].get('caption') != '':
+              field['presentation']['caption'] = etrItem[1].get('caption')
+          if etrItem[1].get('field'):
+            FIELD_DISPLAY_ORDER.append(etrItem[1].get('field'))
         # we found a standard field mapping to display type
       if CONTENT_TYPE_TO_DISPLAY_TYPE.get(v['hipposysedit:type']):
         field['presentation']['displayType'] = CONTENT_TYPE_TO_DISPLAY_TYPE[v['hipposysedit:type']]
@@ -171,9 +176,21 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
         field['type'] = "FieldGroup"
         field['fieldGroupType'] = field['name']
       fields.append(field)
+  # # handle ordering
+  # ordered_fields = []
+  # for displayfield in FIELD_DISPLAY_ORDER:
+  #   for field in fields:
+  #     if field['name'] == displayfield:
+  #       ordered_fields.append(field)
+  # if len(FIELD_DISPLAY_ORDER) != len([f['name'] for f in fields]):
+  #   print("FIELD ORDER:\t{}".format(FIELD_DISPLAY_ORDER))
+  #   print("FIELDS:\t\t{}".format([f['name'] for f in fields]))
+  #   print('cannot reconcile editor display fields with content type fields. exiting script.')
+  #   sys.exit()
   return fields
 
 if __name__ == "__main__":
+  NUMCREATED = 0
   FieldGroups = []
   Documents = []
   if args.dryrun:
@@ -214,7 +231,9 @@ if __name__ == "__main__":
     print("{} contentTypes Migrated to {}".format(NUMCREATED, args.si))
   elif args.dryrun:
     for fg in FieldGroups:
-      print("{}\n{}".format(fg[0],fg[1]))
+      print(fg[0])
+      pprint(fg[1])
     for d in Documents:
-      print("{}\n{}".format(d[0],d[1]))
+      print(d[0])
+      pprint(d[1])
 
