@@ -95,9 +95,12 @@ def getFieldGroupNames(fields):
 def contentTypeExists(contentTypeName):
   getContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
   response = requests.get(contentTypeAPI, headers=headers)
-  for x in response.json():
-    if x["name"].lower() == contentTypeName.lower():
-      return True
+  if response.status_code == 200:
+    for x in response.json():
+      if x["name"].lower() == contentTypeName.lower():
+        return True
+  else:
+    print("status code {}: is your token active?".format(response.status_code))
   return False
 
 def createContentType(contentTypeName, contentType, fields):
