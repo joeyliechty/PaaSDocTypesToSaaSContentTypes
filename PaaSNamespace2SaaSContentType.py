@@ -11,6 +11,7 @@ parser.add_argument('--inputfile', action="store", required=True, help="yaml nam
 parser.add_argument('--project', action="store", required=True, default="core", help="core/development")
 parser.add_argument('--namespace', action="store", required=True, help="input project namespace")
 parser.add_argument('--token', action="store", required=True, help="token")
+parser.add_argument('--prefix', action="store", required=False, help="namespace prefix (for multi-tenant SaaS instances)")
 parser.add_argument('--dryrun', action='store_true')
 parser.add_argument('--no-dryrun', dest='dryrun', action='store_false')
 parser.set_defaults(feature=True)
@@ -133,8 +134,7 @@ def createContentType(contentTypeName, contentType, fields):
     response = requests.put(createUpdateContentTypeEndpoint, json=payload, headers=headers)
     print("STATUS CODE: {}".format(response.status_code))
     print("RESPONSE TEXT: {}".format(response.text))
-    if response.status_code == 201:
-      NUMCREATED += 1
+    return response
 
 def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
   fields = []
@@ -206,6 +206,11 @@ if __name__ == "__main__":
         # contentTypeName
         if key.startswith('/'):
           contentTypeName = key[1:]
+          if args.prefix and args.prefix.isalpha():
+            contentTypeName = "{}{}".format(args.prefix, contentTypeName)
+          elif args.prefix and not args.prefix.isalpha():
+            print("content type prefix must only contain alpha chars. exiting script.")
+            sys.exit()
           # iterate fields
           if '/hipposysedit:nodetype' in value.keys() and '/hipposysedit:nodetype' in value['/hipposysedit:nodetype'].keys():
             if "hippo:compound" in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
