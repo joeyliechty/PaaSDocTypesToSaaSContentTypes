@@ -10,6 +10,7 @@ parser.add_argument('--si', action="store", required=True, help="subdomain of sa
 parser.add_argument('--inputfile', action="store", required=True, help="yaml namespace file")
 parser.add_argument('--project', action="store", required=True, default="core", help="core/development")
 parser.add_argument('--namespace', action="store", required=True, help="input project namespace")
+parser.add_argument('--outputnamespace', action="store", required=True, help="output project namespace")
 parser.add_argument('--token', action="store", required=True, help="token")
 parser.add_argument('--prefix', action="store", required=False, help="namespace prefix (for multi-tenant SaaS instances)")
 parser.add_argument('--dryrun', action='store_true')
@@ -20,6 +21,7 @@ args = parser.parse_args()
 TOKEN = args.token
 # namespace from input file
 NAMESPACE = args.namespace
+OUTPUTNAMESPACE = args.outputnamespace
 
 # these lookup tables map the hipposysedit:type property to the applicable type and displayType for the contentTypeMGMT API
 DOC_TYPE_TO_CONTENT_TYPE = {
@@ -105,7 +107,10 @@ def contentTypeExists(contentTypeName):
   return False
 
 def createContentType(contentTypeName, contentType, fields):
-  createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
+  if OUTPUTNAMESPACE:
+    createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}-{}".format(args.si, args.project, OUTPUTNAMESPACE, contentTypeName)
+  else:
+    createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
   # first, if it exists already, skip it.
   if contentTypeExists(contentTypeName):
     print("{} {} already exists, skipping...".format(contentType, contentTypeName))
@@ -129,9 +134,12 @@ def createContentType(contentTypeName, contentType, fields):
       "name": contentTypeName,
       "fields": fields
     }
+    if OUTPUTNAMESPACE:
+      payload['name'] = "{}:{}".format(OUTPUTNAMESPACE, contentTypeName)
     print("JSON PAYLOAD:")
     pprint(payload)
     response = requests.put(createUpdateContentTypeEndpoint, json=payload, headers=headers)
+    print("URL: {}".format(createUpdateContentTypeEndpoint))
     print("STATUS CODE: {}".format(response.status_code))
     print("RESPONSE TEXT: {}".format(response.text))
     return response
