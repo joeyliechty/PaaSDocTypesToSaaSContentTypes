@@ -10,7 +10,7 @@ parser.add_argument('--si', action="store", required=True, help="subdomain of sa
 parser.add_argument('--inputfile', action="store", required=True, help="yaml namespace file")
 parser.add_argument('--project', action="store", required=True, default="core", help="core/development")
 parser.add_argument('--namespace', action="store", required=True, help="input project namespace")
-parser.add_argument('--outputnamespace', action="store", required=True, help="output project namespace")
+parser.add_argument('--outputnamespace', action="store", required=False, help="output project namespace")
 parser.add_argument('--token', action="store", required=True, help="token")
 parser.add_argument('--prefix', action="store", required=False, help="namespace prefix (for multi-tenant SaaS instances)")
 parser.add_argument('--dryrun', action='store_true')
@@ -91,7 +91,9 @@ def containsFieldGroup(fields):
 def getFieldGroupNames(fields):
   fieldGroupNames = []
   for f in fields:
-    if f['type'] == "FieldGroup":
+    if f['type'] == "FieldGroup" and 'fieldGroupType' in f:
+      fieldGroupNames.append(f['fieldGroupType'])
+    else:
       fieldGroupNames.append(f['name'])
   return fieldGroupNames
 
@@ -121,28 +123,27 @@ def createContentType(contentTypeName, contentType, fields):
       if not contentTypeExists(fg):
         print("FieldGroup {} does not yet exist, skipping {}...".format(fg, contentTypeName))
         return False
-  else:
-    # edit this data structure for the fields/etc
-    payload = {
-      "presentation": {
-        # hardcoding one-column for now for simplicity.
-        "layout": 'one-column',
-        "displayName": contentTypeName
-      },
-      "type": contentType,
-      "enabled": True,
-      "name": contentTypeName,
-      "fields": fields
-    }
-    if OUTPUTNAMESPACE:
-      payload['name'] = "{}:{}".format(OUTPUTNAMESPACE, contentTypeName)
-    print("JSON PAYLOAD:")
-    pprint(payload)
-    response = requests.put(createUpdateContentTypeEndpoint, json=payload, headers=headers)
-    print("URL: {}".format(createUpdateContentTypeEndpoint))
-    print("STATUS CODE: {}".format(response.status_code))
-    print("RESPONSE TEXT: {}".format(response.text))
-    return response
+  # edit this data structure for the fields/etc
+  payload = {
+    "presentation": {
+      # hardcoding one-column for now for simplicity.
+      "layout": 'one-column',
+      "displayName": contentTypeName
+    },
+    "type": contentType,
+    "enabled": True,
+    "name": contentTypeName,
+    "fields": fields
+  }
+  if OUTPUTNAMESPACE:
+    payload['name'] = "{}:{}".format(OUTPUTNAMESPACE, payload['name'])
+  print("JSON PAYLOAD:")
+  pprint(payload)
+  response = requests.put(createUpdateContentTypeEndpoint, json=payload, headers=headers)
+  print("URL: {}".format(createUpdateContentTypeEndpoint))
+  print("STATUS CODE: {}".format(response.status_code))
+  print("RESPONSE TEXT: {}".format(response.text))
+  return response
 
 def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
   fields = []
@@ -154,6 +155,7 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
         required = True
       elif v.get('hipposysedit:validators') and 'required' in v.get('hipposysedit:validators'):
         required = True
+
       field = {
         "name": k[1:].replace(" ", "_"),
         "required": required,
@@ -177,7 +179,7 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
               field['presentation']['caption'] = etrItem[1].get('caption')
           if etrItem[1].get('field'):
             FIELD_DISPLAY_ORDER.append(etrItem[1].get('field'))
-        # we found a standard field mapping to display type
+      # we found a standard field mapping to display type
       if CONTENT_TYPE_TO_DISPLAY_TYPE.get(v['hipposysedit:type']):
         field['presentation']['displayType'] = CONTENT_TYPE_TO_DISPLAY_TYPE[v['hipposysedit:type']]
         if field['presentation']['displayType'] == 'RadioGroup':
@@ -185,7 +187,9 @@ def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
       # we found a inherited compound type / fieldgroup
       elif v['hipposysedit:type'].startswith(NAMESPACE):
         field['type'] = "FieldGroup"
-        field['fieldGroupType'] = field['name']
+        field['fieldGroupType'] = v['hipposysedit:type'].split("{}:".format(NAMESPACE))[1]
+      if field['type'] == "FieldGroup" and 'fieldGroupType' not in field:
+        print("FIELD GROUP WITHOUT TYPE {}".format(field))
       fields.append(field)
   # # handle ordering
   # ordered_fields = []
@@ -228,6 +232,7 @@ if __name__ == "__main__":
             elif "{}:basedocument".format(NAMESPACE) in value['/hipposysedit:nodetype']['/hipposysedit:nodetype']['hipposysedit:supertype']:
               fields = parseFieldsFromYamlObject(value['/hipposysedit:nodetype']['/hipposysedit:nodetype'], value['/editor:templates']['/_default_'])
               Documents.append([contentTypeName, fields])
+
     except yaml.YAMLError as exc:
       print(exc)
   if hasDevelopmentProjectWithContentTypeChanges('foobar'):
@@ -238,13 +243,12 @@ if __name__ == "__main__":
 
   # if we cancel the dry run, create in SaaS
   if NODRYRUNOK and not args.dryrun:
-    print("Creating Field Groups:")
+    print("Creating {} Field Groups:".format(len(FieldGroups)))
     for fg in FieldGroups:
       createContentType(fg[0], "FieldGroup", fg[1])
-    print("Creating Document Types:")
+    print("Creating {} Document Types:".format(len(Documents)))
     for d in Documents:
       createContentType(d[0], "Document", d[1])
-    print("{} contentTypes Migrated to {}".format(NUMCREATED, args.si))
   elif args.dryrun:
     for fg in FieldGroups:
       print(fg[0])
