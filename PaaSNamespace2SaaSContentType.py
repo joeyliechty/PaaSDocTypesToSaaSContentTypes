@@ -259,6 +259,3 @@ if __name__ == "__main__":
     for d in Documents:
       print(d[0])
       pprint(d[1])
-
-# proj 0af9fbd6-71cf-4b34-8958-93d3abb7548e
-# noproj 0d9316e7-9adc-45d9-9143-efcda50ff30b
