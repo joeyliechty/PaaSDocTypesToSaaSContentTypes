@@ -91,28 +91,31 @@ def containsFieldGroup(fields):
 def getFieldGroupNames(fields):
   fieldGroupNames = []
   for f in fields:
-    if f['type'] == "FieldGroup" and 'fieldGroupType' in f:
-      fieldGroupNames.append(f['fieldGroupType'])
-    else:
-      fieldGroupNames.append(f['name'])
+    name = ""
+    if f['type'] == "FieldGroup":
+      if "fieldGroupType" in f:
+        name = f["fieldGroupType"]
+      else:
+        name = f["name"]
+      if OUTPUTNAMESPACE:
+        fieldGroupNames.append("{}-{}".format(OUTPUTNAMESPACE, name))
+      else:
+        fieldGroupNames.append(name)
   return fieldGroupNames
 
 def contentTypeExists(contentTypeName):
   getContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
-  response = requests.get(contentTypeAPI, headers=headers)
-  if response.status_code == 200:
-    for x in response.json():
-      if x["name"].lower() == contentTypeName.lower():
-        return True
+  response = requests.get(getContentTypeEndpoint, headers=headers)
+  if response.status_code in [200, 201]:
+    if response.json()["name"].lower() == contentTypeName.replace("-",":").lower():
+      return True
+    else:
+      return False
   else:
-    print("status code {}: is your token active?".format(response.status_code))
-  return False
+    return False
 
 def createContentType(contentTypeName, contentType, fields):
-  if OUTPUTNAMESPACE:
-    createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}-{}".format(args.si, args.project, OUTPUTNAMESPACE, contentTypeName)
-  else:
-    createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
+  createUpdateContentTypeEndpoint = "https://{}.bloomreach.io/management/contenttypes/v1/{}/{}".format(args.si, args.project, contentTypeName)
   # first, if it exists already, skip it.
   if contentTypeExists(contentTypeName):
     print("{} {} already exists, skipping...".format(contentType, contentTypeName))
@@ -128,21 +131,15 @@ def createContentType(contentTypeName, contentType, fields):
     "presentation": {
       # hardcoding one-column for now for simplicity.
       "layout": 'one-column',
-      "displayName": contentTypeName
+      "displayName": contentTypeName.replace("-", ":")
     },
     "type": contentType,
     "enabled": True,
-    "name": contentTypeName,
+    "name": contentTypeName.replace("-", ":"),
     "fields": fields
   }
-  if OUTPUTNAMESPACE:
-    payload['name'] = "{}:{}".format(OUTPUTNAMESPACE, payload['name'])
-  print("JSON PAYLOAD:")
-  pprint(payload)
   response = requests.put(createUpdateContentTypeEndpoint, json=payload, headers=headers)
-  print("URL: {}".format(createUpdateContentTypeEndpoint))
-  print("STATUS CODE: {}".format(response.status_code))
-  print("RESPONSE TEXT: {}".format(response.text))
+  print("Creating {} at {} with status code {}".format(payload["name"], createUpdateContentTypeEndpoint, response.status_code))
   return response
 
 def parseFieldsFromYamlObject(nodetypeRoot, editorTemplatesRoot):
@@ -245,10 +242,16 @@ if __name__ == "__main__":
   if NODRYRUNOK and not args.dryrun:
     print("Creating {} Field Groups:".format(len(FieldGroups)))
     for fg in FieldGroups:
-      createContentType(fg[0], "FieldGroup", fg[1])
+      if OUTPUTNAMESPACE:
+        createContentType("{}-{}".format(OUTPUTNAMESPACE,fg[0]), "FieldGroup", fg[1])
+      else:
+        createContentType(fg[0], "FieldGroup", fg[1])
     print("Creating {} Document Types:".format(len(Documents)))
     for d in Documents:
-      createContentType(d[0], "Document", d[1])
+      if OUTPUTNAMESPACE:
+        createContentType("{}-{}".format(OUTPUTNAMESPACE,d[0]), "Document", d[1])
+      else:
+        createContentType(d[0], "Document", d[1])
   elif args.dryrun:
     for fg in FieldGroups:
       print(fg[0])
@@ -257,3 +260,5 @@ if __name__ == "__main__":
       print(d[0])
       pprint(d[1])
 
+# proj 0af9fbd6-71cf-4b34-8958-93d3abb7548e
+# noproj 0d9316e7-9adc-45d9-9143-efcda50ff30b
